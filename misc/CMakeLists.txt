@@ -1,5 +1,6 @@
 add_clang_library(clangTidyMiscModule
   MiscTidyModule.cpp
+  NonDataStructsCheck.cpp
 
   LINK_LIBS
   clangAnalysis
