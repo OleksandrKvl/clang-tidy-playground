@@ -9,6 +9,7 @@
 #include "../ClangTidy.h"
 #include "../ClangTidyModule.h"
 #include "../ClangTidyModuleRegistry.h"
+#include "ExplicitThisCheck.h"
 #include "NonDataStructsCheck.h"
 
 namespace clang {
@@ -18,6 +19,8 @@ namespace misc {
 class MiscModule : public ClangTidyModule {
 public:
   void addCheckFactories(ClangTidyCheckFactories &CheckFactories) override {
+    CheckFactories.registerCheck<ExplicitThisCheck>(
+        "misc-explicit-this");
     CheckFactories.registerCheck<NonDataStructsCheck>(
         "misc-non-data-structs");
   }
