@@ -19,7 +19,7 @@ namespace misc {
 namespace {
 // these are from misc-non-private-member-variables-in-classes
 AST_MATCHER(CXXRecordDecl, hasMethods) {
-  // doesn't count template methods
+  // doesn't count template methods until their instantiation
   return std::distance(Node.method_begin(), Node.method_end()) != 0;
 }
 
