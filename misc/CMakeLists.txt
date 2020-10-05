@@ -1,5 +1,5 @@
 add_clang_library(clangTidyMiscModule
-  ExplicitThisCheck.cpp
+  EnforceThisStyleCheck.cpp
   MiscTidyModule.cpp
   NonDataStructsCheck.cpp
 
