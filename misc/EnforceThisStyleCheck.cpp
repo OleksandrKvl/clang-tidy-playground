@@ -1,4 +1,5 @@
-//===--- EnforceThisStyleCheck.cpp - clang-tidy -------------------------------===//
+//===--- EnforceThisStyleCheck.cpp - clang-tidy
+//-------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -15,7 +16,8 @@ namespace clang {
 namespace tidy {
 namespace misc {
 
-EnforceThisStyleCheck::EnforceThisStyleCheck(StringRef Name, ClangTidyContext *Context)
+EnforceThisStyleCheck::EnforceThisStyleCheck(StringRef Name,
+                                             ClangTidyContext *Context)
     : ClangTidyCheck(Name, Context) {
   const auto StyleStr = Options.get("Style", "implicit");
   if (StyleStr == "explicit") {
@@ -34,8 +36,9 @@ void EnforceThisStyleCheck::registerMatchers(MatchFinder *Finder) {
   Finder->addMatcher(
       cxxMethodDecl(
           isDefinition(),
-          forEachDescendant(memberExpr(has(cxxThisExpr().bind("thisExpr")))
-                                .bind("memberExpr")))
+          forEachDescendant(
+              memberExpr(has(ignoringImpCasts(cxxThisExpr().bind("thisExpr"))))
+                  .bind("memberExpr")))
           .bind("method"),
       this);
 }
@@ -49,7 +52,7 @@ bool hasVariableWithName(const CXXMethodDecl &Function, ASTContext &Context,
 }
 
 void EnforceThisStyleCheck::removeExplicitThis(const SourceManager &SM,
-                                           const MemberExpr &MembExpr) {
+                                               const MemberExpr &MembExpr) {
   const auto ThisStart = MembExpr.getBeginLoc();
   const auto ThisEnd = MembExpr.getMemberLoc();
   const auto ThisRange = Lexer::makeFileCharRange(

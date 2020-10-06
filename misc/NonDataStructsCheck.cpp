@@ -40,6 +40,8 @@ void NonDataStructsCheck::registerMatchers(MatchFinder *Finder) {
 void NonDataStructsCheck::check(const MatchFinder::MatchResult &Result) {
 
   const auto *MatchedRecord = Result.Nodes.getNodeAs<CXXRecordDecl>("record");
+  assert(MatchedRecord);
+  
   diag(MatchedRecord->getLocation(),
        "struct %0 has methods or non-public data members")
       << MatchedRecord;
