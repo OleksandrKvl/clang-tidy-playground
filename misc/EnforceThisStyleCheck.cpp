@@ -35,7 +35,7 @@ void EnforceThisStyleCheck::registerMatchers(MatchFinder *Finder) {
 
   Finder->addMatcher(
       cxxMethodDecl(
-          isDefinition(),
+          /*isDefinition(),*/
           forEachDescendant(
               memberExpr(has(ignoringImpCasts(cxxThisExpr().bind("thisExpr"))))
                   .bind("memberExpr")))
@@ -43,11 +43,12 @@ void EnforceThisStyleCheck::registerMatchers(MatchFinder *Finder) {
       this);
 }
 
-// Rename the whole module to "EnforceThisStyle"
 bool hasVariableWithName(const CXXMethodDecl &Function, ASTContext &Context,
                          StringRef Name) {
   const auto Matches =
-      match(decl(hasDescendant(varDecl(hasName(Name)))), Context);
+      match(decl(hasDescendant(varDecl(hasName(Name)).bind("var"))), Function,
+            Context);
+
   return !Matches.empty();
 }
 
@@ -77,6 +78,7 @@ static bool isSimpleMember(const MemberExpr &MembExpr) {
 }
 
 void EnforceThisStyleCheck::check(const MatchFinder::MatchResult &Result) {
+  llvm::outs() << "ctx addr | " << (void *)&Result.Context << '\n';
   const auto MatchedThis = Result.Nodes.getNodeAs<CXXThisExpr>("thisExpr");
   assert(MatchedThis);
 
@@ -91,12 +93,41 @@ void EnforceThisStyleCheck::check(const MatchFinder::MatchResult &Result) {
     const auto MatchedMethod = Result.Nodes.getNodeAs<CXXMethodDecl>("method");
     assert(MatchedMethod);
 
+    // hasTemplateKeyword() works
+    diag(MatchedThis->getLocation(), "explicit `this->` candidate");
+
     if (isSimpleMember(*MatchedMember)) {
       if (!hasVariableWithName(*MatchedMethod, *Result.Context,
                                MatchedMember->getMemberDecl()->getName())) {
         diag(MatchedThis->getLocation(), "explicit `this->` detected");
+
+        llvm::outs() << "isValueDependent(): "
+                     << MatchedMember->isValueDependent()
+                     << " | isTypeDependent(): "
+                     << MatchedMember->isTypeDependent()
+                     << " | isInstantiationDependent():"
+                     << MatchedMember->isInstantiationDependent()
+                     << " | hasTemplateKeyword(): "
+                     << MatchedMember->hasTemplateKeyword() << '\n';
+
+        const auto MemDecl = MatchedMember->getMemberDecl();
+        const auto Class = MatchedMethod->getParent();
+        // Class->dump(llvm::outs());
+        const auto ClassSpec = dyn_cast<ClassTemplateSpecializationDecl>(Class);
+        // can we check whether MemberExpr class type is in template arguments?
+        // ClassSpec->
+        llvm::outs() << "isTemplateDecl(): "
+                     << (void *)Class->getDescribedClassTemplate() << '\n';
+
+        MemDecl->printQualifiedName(llvm::outs());
+        llvm::outs() << '\n';
+
         removeExplicitThis(*Result.SourceManager, *MatchedMember);
+      } else {
+        diag(MatchedThis->getLocation(), "HAS LOCAL VARIABLE WITH SAME NAME");
       }
+    } else {
+      diag(MatchedThis->getLocation(), "NOT SIMPLE NAME");
     }
   } else if ((Style == ThisStyle::Explicit) && MatchedThis->isImplicit()) {
     if (!MatchedMember->hasQualifier()) {
