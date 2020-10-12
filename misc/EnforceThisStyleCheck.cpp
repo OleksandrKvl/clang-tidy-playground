@@ -102,7 +102,11 @@ bool hasDirectMember(const CXXRecordDecl &Record, ASTContext &Context,
 void EnforceThisStyleCheck::removeExplicitThis(const SourceManager &SM,
                                                const MemberExpr &MembExpr) {
   const auto ThisStart = MembExpr.getBeginLoc();
-  const auto ThisEnd = MembExpr.getMemberLoc();
+  auto ThisEnd = MembExpr.getMemberLoc();
+  if (MembExpr.hasQualifier()) {
+    ThisEnd = MembExpr.getQualifierLoc().getBeginLoc();
+  }
+
   const auto ThisRange = Lexer::makeFileCharRange(
       CharSourceRange::getCharRange(ThisStart, ThisEnd), SM, getLangOpts());
 
@@ -113,7 +117,10 @@ void EnforceThisStyleCheck::removeExplicitThis(const SourceManager &SM,
 void EnforceThisStyleCheck::removeExplicitThis(
     const SourceManager &SM, const CXXDependentScopeMemberExpr &MembExpr) {
   const auto ThisStart = MembExpr.getBeginLoc();
-  const auto ThisEnd = MembExpr.getMemberLoc();
+  auto ThisEnd = MembExpr.getMemberLoc();
+  if (MembExpr.getQualifier()) {
+    ThisEnd = MembExpr.getQualifierLoc().getBeginLoc();
+  }
   const auto ThisRange = Lexer::makeFileCharRange(
       CharSourceRange::getCharRange(ThisStart, ThisEnd), SM, getLangOpts());
 
@@ -124,7 +131,10 @@ void EnforceThisStyleCheck::removeExplicitThis(
 void EnforceThisStyleCheck::removeExplicitThis(
     const SourceManager &SM, const UnresolvedMemberExpr &MembExpr) {
   const auto ThisStart = MembExpr.getBeginLoc();
-  const auto ThisEnd = MembExpr.getMemberLoc();
+  auto ThisEnd = MembExpr.getMemberLoc();
+  if (MembExpr.getQualifier()) {
+    ThisEnd = MembExpr.getQualifierLoc().getBeginLoc();
+  }
   const auto ThisRange = Lexer::makeFileCharRange(
       CharSourceRange::getCharRange(ThisStart, ThisEnd), SM, getLangOpts());
 
@@ -132,9 +142,9 @@ void EnforceThisStyleCheck::removeExplicitThis(
       << FixItHint::CreateRemoval(ThisRange);
 }
 
-void EnforceThisStyleCheck::addExplicitThis(const CXXThisExpr &ThisExpr) {
-  diag(ThisExpr.getLocation(), "insert 'this->'", DiagnosticIDs::Note)
-      << FixItHint::CreateInsertion(ThisExpr.getLocation(), "this->");
+void EnforceThisStyleCheck::addExplicitThis(const MemberExpr &ThisExpr) {
+  diag(ThisExpr.getBeginLoc(), "insert 'this->'", DiagnosticIDs::Note)
+      << FixItHint::CreateInsertion(ThisExpr.getBeginLoc(), "this->");
 }
 
 // checks whether the expression relates to a special member function
@@ -205,13 +215,27 @@ void EnforceThisStyleCheck::check(const MatchFinder::MatchResult &Result) {
     const auto MatchedMethod = Result.Nodes.getNodeAs<CXXMethodDecl>("method");
     assert(MatchedMethod);
 
-    if (MatchedMember && !isInTemplate(*MatchedMethod, Result)) {
+    if (MatchedMember && !MatchedMethod->isTemplateInstantiation() &&
+        !isInTemplate(*MatchedMethod, Result)) {
+      if (isSimpleMember(*MatchedMember)) {
+        // llvm::outs() << "NON TMP candidate | "
+        //              << MatchedMember->getMemberDecl()->getName()
+        //              << " | !hasQualifier(): " <<
+        //              !MatchedMember->hasQualifier()
+        //              << " | !hasVariableWithName(): "
+        //              << !hasVariableWithName(
+        //                     *MatchedMethod, *Result.Context,
+        //                     MatchedMember->getMemberDecl()->getName())
+        //              << '\n';
+      }
       // methods in non-template classes or instantiated methods
-      if (isSimpleMember(*MatchedMember) && !MatchedMember->hasQualifier() &&
-          !hasVariableWithName(*MatchedMethod, *Result.Context,
-                               MatchedMember->getMemberDecl()->getName())) {
+      if (isSimpleMember(*MatchedMember) /*&& !MatchedMember->hasQualifier()*/
+          && !hasVariableWithName(*MatchedMethod, *Result.Context,
+                                  MatchedMember->getMemberDecl()->getName())) {
         diag(MatchedThis->getLocation(),
-             "explicit `this->` detected | NON TMP | ");
+             "explicit `this->` detected | NON TMP");
+
+        // MatchedMethod->dumpColor();
         removeExplicitThis(*Result.SourceManager, *MatchedMember);
       }
     } else {
@@ -230,7 +254,8 @@ void EnforceThisStyleCheck::check(const MatchFinder::MatchResult &Result) {
         // if (isSimpleName) {
         //   llvm::outs()
         //       << "TMP candidate | "
-        //       << MatchedDepMember->getMember().getAsIdentifierInfo()->getName()
+        //       <<
+        //       MatchedDepMember->getMember().getAsIdentifierInfo()->getName()
         //       << '\n';
         // }
 
@@ -245,7 +270,7 @@ void EnforceThisStyleCheck::check(const MatchFinder::MatchResult &Result) {
                 *MatchedMethod, *Result.Context,
                 MatchedDepMember->getMember().getAsIdentifierInfo()->getName());
 
-        if (!hasQualifier && isSimpleName && hasDirMember &&
+        if (/*!hasQualifier &&*/ isSimpleName && hasDirMember &&
             !hasSameLocalName) {
           diag(MatchedThis->getLocation(),
                "explicit `this->` detected | TMP |");
@@ -253,7 +278,8 @@ void EnforceThisStyleCheck::check(const MatchFinder::MatchResult &Result) {
         } else if (isSimpleName) {
           // llvm::outs()
           //     << "TMP candidate FAILED | "
-          //     << MatchedDepMember->getMember().getAsIdentifierInfo()->getName()
+          //     <<
+          //     MatchedDepMember->getMember().getAsIdentifierInfo()->getName()
           //     << " | !hasQualifier " << !hasQualifier << " | isSimpleName"
           //     << isSimpleName << " | hasDirMember" << hasDirMember
           //     << " | !hasSameLocalName" << !hasSameLocalName << '\n';
@@ -266,13 +292,13 @@ void EnforceThisStyleCheck::check(const MatchFinder::MatchResult &Result) {
         const auto hasQualifier = !!MatchedUnresMember->getQualifier();
         const auto isSimpleName = isSimpleMember(*MatchedUnresMember);
 
-        // if (isSimpleName) {
-        //   llvm::outs() << "TMP candidate | "
-        //                << MatchedUnresMember->getMemberName()
-        //                       .getAsIdentifierInfo()
-        //                       ->getName()
-        //                << '\n';
-        // }
+        if (isSimpleName) {
+          llvm::outs() << "TMP candidate | "
+                       << MatchedUnresMember->getMemberName()
+                              .getAsIdentifierInfo()
+                              ->getName()
+                       << '\n';
+        }
 
         const auto hasDirMember =
             isSimpleName && hasDirectMember(*Class, *Result.Context,
@@ -286,7 +312,7 @@ void EnforceThisStyleCheck::check(const MatchFinder::MatchResult &Result) {
                                     .getAsIdentifierInfo()
                                     ->getName());
 
-        if (!hasQualifier && isSimpleName && hasDirMember &&
+        if (/*!hasQualifier &&*/ isSimpleName && hasDirMember &&
             !hasSameLocalName) {
           diag(MatchedThis->getLocation(),
                "explicit `this->` detected | TMP |");
@@ -297,9 +323,10 @@ void EnforceThisStyleCheck::check(const MatchFinder::MatchResult &Result) {
   } else if ((Style == ThisStyle::Explicit) && MatchedThis->isImplicit()) {
     // with implicit this only MemberExpr is possible
     assert(MatchedMember);
-    if (!MatchedMember->hasQualifier()) {
-      diag(MatchedThis->getLocation(), "implicit `this->` detected");
-      addExplicitThis(*MatchedThis);
+    // if (!MatchedMember->hasQualifier())
+    {
+      diag(MatchedMember->getBeginLoc(), "implicit `this->` detected");
+      addExplicitThis(*MatchedMember);
     }
   }
 }

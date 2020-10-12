@@ -26,7 +26,7 @@ public:
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
   // void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
 
-  void addExplicitThis(const CXXThisExpr &ThisExpr);
+  void addExplicitThis(const MemberExpr &ThisExpr);
   void removeExplicitThis(const SourceManager &SM,
                           const MemberExpr &MatchedMember);
   void removeExplicitThis(const SourceManager &SM,
