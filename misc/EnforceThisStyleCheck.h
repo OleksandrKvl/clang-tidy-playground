@@ -29,9 +29,15 @@ public:
   void addExplicitThis(const CXXThisExpr &ThisExpr);
   void removeExplicitThis(const SourceManager &SM,
                           const MemberExpr &MatchedMember);
+  void removeExplicitThis(const SourceManager &SM,
+                          const CXXDependentScopeMemberExpr &MembExpr);
+  void removeExplicitThis(const SourceManager &SM,
+                          const UnresolvedMemberExpr &MembExpr);
 
-private:
-  enum class ThisStyle { Implicit, Explicit };
+      private : enum class ThisStyle {
+        Implicit,
+        Explicit
+      };
   ThisStyle Style{ThisStyle::Implicit};
 };
 
