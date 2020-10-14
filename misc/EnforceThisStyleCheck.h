@@ -27,6 +27,8 @@ public:
   // void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
 
   void addExplicitThis(const MemberExpr &ThisExpr);
+  void removeExplicitThis(SourceLocation ThisStart, SourceLocation ThisEnd,
+                          const SourceManager &SM);
   void removeExplicitThis(const SourceManager &SM,
                           const MemberExpr &MatchedMember);
   void removeExplicitThis(const SourceManager &SM,
@@ -34,10 +36,8 @@ public:
   void removeExplicitThis(const SourceManager &SM,
                           const UnresolvedMemberExpr &MembExpr);
 
-      private : enum class ThisStyle {
-        Implicit,
-        Explicit
-      };
+private:
+  enum class ThisStyle { Implicit, Explicit };
   ThisStyle Style{ThisStyle::Implicit};
 };
 
