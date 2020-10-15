@@ -24,17 +24,13 @@ public:
   EnforceThisStyleCheck(StringRef Name, ClangTidyContext *Context);
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
-  // void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
+  void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
 
-  void addExplicitThis(const MemberExpr &ThisExpr);
+  void addExplicitThis(const CXXThisExpr &ThisExpr);
   void removeExplicitThis(SourceLocation ThisStart, SourceLocation ThisEnd,
                           const SourceManager &SM);
   void removeExplicitThis(const SourceManager &SM,
                           const MemberExpr &MatchedMember);
-  void removeExplicitThis(const SourceManager &SM,
-                          const CXXDependentScopeMemberExpr &MembExpr);
-  void removeExplicitThis(const SourceManager &SM,
-                          const UnresolvedMemberExpr &MembExpr);
 
 private:
   enum class ThisStyle { Implicit, Explicit };
