@@ -34,24 +34,63 @@ EnforceThisStyleCheck::EnforceThisStyleCheck(StringRef Name,
 //   // Options.store(); ???
 // }
 
-template <typename NodeType>
-static bool isInInstantiation(const NodeType &Node,
-                              const MatchFinder::MatchResult &Result) {
-  return !match(isInTemplateInstantiation(), Node, *Result.Context).empty();
-}
+// template <typename NodeType>
+// static bool isInInstantiation(const NodeType &Node,
+//                               const MatchFinder::MatchResult &Result) {
+//   return !match(isInTemplateInstantiation(), Node, *Result.Context).empty();
+// }
 
 template <typename NodeType>
 static bool isInTemplate(const NodeType &Node,
                          const MatchFinder::MatchResult &Result) {
-  auto IsInsideTemplate = anyOf(hasAncestor(classTemplateDecl()),
-                                hasAncestor(classTemplateSpecializationDecl(
-                                    unless(isExplicitSpecialization()))));
+  // auto IsInsideTemplate = anyOf(hasAncestor(classTemplateDecl()),
+  //                               hasAncestor(classTemplateSpecializationDecl(
+  //                                 // classTemplateSpecializationDecl is
+  //                                 always a full
+  //                                 // specialization, explicit specialization
+  //                                 means
+  //                                 // it's a hand-written one, it doesn't
+  //                                 contain
+  //                                 // template parameters
+  //                                   unless(isExplicitSpecialization()))));
+
+  // classTemplateSpecializationDecl is always a full specialization, explicit
+  // specialization means it's a hand-written one, it doesn't have template
+  // parameters
+  // auto IsInsideTemplate = hasAncestor(
+  //     classTemplateSpecializationDecl(unless(isExplicitSpecialization())));
+
+  auto IsInsideTemplate = hasAncestor(classTemplateSpecializationDecl(
+      unless(isExplicitTemplateSpecialization())));
+
   return !match(decl(IsInsideTemplate), Node, *Result.Context).empty();
 }
 
+static bool isInTemplate(const CXXMethodDecl &Method,
+                         const MatchFinder::MatchResult &Result) {
+  // classTemplateSpecializationDecl is always a full specialization, explicit
+  // specialization means it's a hand-written one, it doesn't have template
+  // parameters
+
+  // auto IsInsideTemplate = hasAncestor(classTemplateSpecializationDecl(
+  //     unless(isExplicitTemplateSpecialization())));
+  // const auto MatchResult =
+  //     !match(decl(IsInsideTemplate), Method, *Result.Context).empty();
+
+  // do like isTemplateInstantiation() matcher does
+  const auto Class = Method.getParent();
+  const auto SpecKind = Class->getTemplateSpecializationKind();
+  const auto IsInstantiated = (SpecKind == TSK_ImplicitInstantiation ||
+                       SpecKind == TSK_ExplicitInstantiationDefinition ||
+                       SpecKind == TSK_ExplicitInstantiationDeclaration);
+
+  return IsInstantiated;
+}
+
 void EnforceThisStyleCheck::registerMatchers(MatchFinder *Finder) {
-  if (!getLangOpts().CPlusPlus)
+  if (!getLangOpts().CPlusPlus) {
     return;
+  }
   // handle template version
   // Finder->addMatcher(
   //     cxxMethodDecl(
@@ -72,7 +111,8 @@ void EnforceThisStyleCheck::registerMatchers(MatchFinder *Finder) {
   // handle only instantiations version
   Finder->addMatcher(
       cxxMethodDecl(
-          isDefinition(), unless(isDefaulted()),
+          // don't check compiler-generated function bodies
+          isDefinition(), unless(anyOf(isImplicit(), isDefaulted())),
           forEachDescendant(
               memberExpr(has(ignoringImpCasts(cxxThisExpr().bind("thisExpr"))))
                   .bind("memberExpr")))
@@ -83,8 +123,7 @@ void EnforceThisStyleCheck::registerMatchers(MatchFinder *Finder) {
 bool hasVariableWithName(const CXXMethodDecl &Function, ASTContext &Context,
                          StringRef Name) {
   const auto Matches =
-      match(decl(hasDescendant(varDecl(hasName(Name)).bind("var"))), Function,
-            Context);
+      match(decl(hasDescendant(varDecl(hasName(Name)))), Function, Context);
 
   return !Matches.empty();
 }
@@ -93,9 +132,6 @@ bool hasDirectMember(const CXXRecordDecl &Record, ASTContext &Context,
                      StringRef Name) {
   const auto Matches =
       match(cxxRecordDecl(has(namedDecl(hasName(Name)))), Record, Context);
-  // match(cxxRecordDecl(anyOf(has(fieldDecl(hasName(Name))),
-  //                           has(cxxMethodDecl(hasName(Name))))),
-  //       Record, Context);
 
   return !Matches.empty();
 }
@@ -106,7 +142,7 @@ void EnforceThisStyleCheck::removeExplicitThis(SourceLocation ThisStart,
   const auto ThisRange = Lexer::makeFileCharRange(
       CharSourceRange::getCharRange(ThisStart, ThisEnd), SM, getLangOpts());
 
-  diag(ThisStart, "remove 'this->'", DiagnosticIDs::Note)
+  diag(ThisStart, "remove 'this->'", DiagnosticIDs::Warning)
       << FixItHint::CreateRemoval(ThisRange);
 }
 
@@ -227,16 +263,15 @@ void EnforceThisStyleCheck::check(const MatchFinder::MatchResult &Result) {
         (!isInTemplate(*MatchedMethod, Result) ||
          hasDirectMember(*Class, *Result.Context,
                          MatchedMember->getMemberDecl()->getName()))) {
-      diag(MatchedThis->getLocation(), "explicit `this->` detected | NON TMP");
+      // diag(MatchedThis->getLocation(), "explicit `this->` detected");
 
-      // MatchedMethod->dumpColor();
       removeExplicitThis(*Result.SourceManager, *MatchedMember);
     }
   } else if ((Style == ThisStyle::Explicit) && MatchedThis->isImplicit()) {
     // with implicit this only MemberExpr is possible
     assert(MatchedMember);
 
-    diag(MatchedMember->getBeginLoc(), "implicit `this->` detected");
+    // diag(MatchedMember->getBeginLoc(), "implicit `this->` detected");
     addExplicitThis(*MatchedMember);
   }
 }
