@@ -26,6 +26,8 @@ public:
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
   void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
 
+  bool isValidLocation(SourceLocation ThisLocation,
+                       const SourceManager &SM) const;
   void addExplicitThis(const CXXThisExpr &ThisExpr);
   void removeExplicitThis(SourceLocation ThisStart, SourceLocation ThisEnd,
                           const SourceManager &SM);
@@ -35,6 +37,7 @@ public:
 private:
   enum class ThisStyle { Implicit, Explicit };
   ThisStyle Style{ThisStyle::Implicit};
+  std::string AllowedMacroRegexp;
 };
 
 } // namespace misc

@@ -22,6 +22,7 @@ EnforceThisStyleCheck::EnforceThisStyleCheck(StringRef Name,
   if (StyleStr == "explicit") {
     Style = ThisStyle::Explicit;
   }
+  AllowedMacroRegexp = Options.get("AllowedMacroRegexp", "");
 }
 
 void EnforceThisStyleCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
@@ -30,6 +31,7 @@ void EnforceThisStyleCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
   } else {
     Options.store(Opts, "Style", "explicit");
   }
+  Options.store(Opts, "AllowedMacroRegexp", AllowedMacroRegexp);
 }
 
 static bool isTemplateInstantiation(const CXXRecordDecl &Class) {
@@ -52,7 +54,7 @@ void EnforceThisStyleCheck::registerMatchers(MatchFinder *Finder) {
 
   Finder->addMatcher(
       cxxMethodDecl(
-          // don't check compiler-generated function bodies
+          // don't check compiler-generated function definitions
           isDefinition(), unless(anyOf(isImplicit(), isDefaulted())),
           forEachDescendant(
               memberExpr(has(ignoringImpCasts(cxxThisExpr().bind("thisExpr"))))
@@ -119,16 +121,28 @@ static bool isNonSpecialMember(const MemberExpr &MembExpr) {
   return !MethodDecl || MethodDecl->getIdentifier();
 }
 
+bool EnforceThisStyleCheck::isValidLocation(const SourceLocation ThisLocation,
+                                            const SourceManager &SM) const {
+  if (ThisLocation.isInvalid()) {
+    return false;
+  }
+
+  if (ThisLocation.isMacroID()) {
+    const auto MacroName =
+        Lexer::getImmediateMacroName(ThisLocation, SM, getLangOpts());
+    if (!llvm::Regex(AllowedMacroRegexp).match(MacroName)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 void EnforceThisStyleCheck::check(const MatchFinder::MatchResult &Result) {
   const auto ThisExpr = Result.Nodes.getNodeAs<CXXThisExpr>("thisExpr");
   assert(ThisExpr);
 
-  const auto ThisLocation = ThisExpr->getLocation();
-
-  if (ThisLocation.isInvalid() ||
-      (ThisLocation.isMacroID() &&
-       (Lexer::getImmediateMacroName(ThisLocation, *Result.SourceManager,
-                                     getLangOpts()) != "assert"))) {
+  if (!isValidLocation(ThisExpr->getLocation(), *Result.SourceManager)) {
     return;
   }
 
@@ -138,7 +152,6 @@ void EnforceThisStyleCheck::check(const MatchFinder::MatchResult &Result) {
     const auto MethodDecl = Result.Nodes.getNodeAs<CXXMethodDecl>("methodDecl");
     assert(MethodDecl);
     const auto Class = MethodDecl->getParent();
-    assert(Class);
 
     if (isNonSpecialMember(*MembExpr) &&
         !hasVariableWithName(*MethodDecl, *Result.Context,
