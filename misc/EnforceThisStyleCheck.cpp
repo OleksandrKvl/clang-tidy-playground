@@ -36,7 +36,7 @@ void EnforceThisStyleCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
 
 static bool isTemplateInstantiation(const CXXRecordDecl &Class) {
   // Do like isTemplateInstantiation() matcher does. We don't care about
-  // explicit specializations because they don't have template arguments, which
+  // explicit specializations because they don't have template parameters, which
   // means they can't have type-dependent names.
   const auto SpecKind = Class.getTemplateSpecializationKind();
   const auto IsInstantiated =
@@ -82,7 +82,6 @@ static bool hasDirectMember(const CXXRecordDecl &Record, ASTContext &Context,
 static bool isDependentName(const CXXMethodDecl &Method,
                             const MemberExpr &MembExpr, ASTContext &Context) {
   const auto Class = Method.getParent();
-  assert(Class);
 
   return isTemplateInstantiation(*Class) &&
          !hasDirectMember(*Class, Context, MembExpr.getMemberDecl()->getName());
@@ -108,9 +107,10 @@ void EnforceThisStyleCheck::removeExplicitThis(const SourceManager &SM,
   removeExplicitThis(ThisStart, ThisEnd, SM);
 }
 
-void EnforceThisStyleCheck::addExplicitThis(const CXXThisExpr &ThisExpr) {
-  diag(ThisExpr.getBeginLoc(), "insert 'this->'")
-      << FixItHint::CreateInsertion(ThisExpr.getBeginLoc(), "this->");
+void EnforceThisStyleCheck::addExplicitThis(const MemberExpr &MembExpr) {
+  const auto ThisLocation = MembExpr.getBeginLoc();
+  diag(ThisLocation, "insert 'this->'")
+      << FixItHint::CreateInsertion(ThisLocation, "this->");
 }
 
 static bool isNonSpecialMember(const MemberExpr &MembExpr) {
@@ -138,6 +138,15 @@ bool EnforceThisStyleCheck::isValidLocation(const SourceLocation ThisLocation,
   return true;
 }
 
+static bool isRedundantExplicitThis(const MemberExpr &MembExpr,
+                                    const CXXMethodDecl &MethodDecl,
+                                    ASTContext &Context) {
+  return (isNonSpecialMember(MembExpr) &&
+          !hasVariableWithName(MethodDecl, Context,
+                               MembExpr.getMemberDecl()->getName()) &&
+          !isDependentName(MethodDecl, MembExpr, Context));
+}
+
 void EnforceThisStyleCheck::check(const MatchFinder::MatchResult &Result) {
   const auto ThisExpr = Result.Nodes.getNodeAs<CXXThisExpr>("thisExpr");
   assert(ThisExpr);
@@ -146,22 +155,18 @@ void EnforceThisStyleCheck::check(const MatchFinder::MatchResult &Result) {
     return;
   }
 
+  const auto MembExpr = Result.Nodes.getNodeAs<MemberExpr>("memberExpr");
+  assert(MembExpr);
+
   if ((Style == ThisStyle::Implicit) && !ThisExpr->isImplicit()) {
-    const auto MembExpr = Result.Nodes.getNodeAs<MemberExpr>("memberExpr");
-    assert(MembExpr);
     const auto MethodDecl = Result.Nodes.getNodeAs<CXXMethodDecl>("methodDecl");
     assert(MethodDecl);
-    const auto Class = MethodDecl->getParent();
 
-    if (isNonSpecialMember(*MembExpr) &&
-        !hasVariableWithName(*MethodDecl, *Result.Context,
-                             MembExpr->getMemberDecl()->getName()) &&
-        !isDependentName(*MethodDecl, *MembExpr, *Result.Context)) {
-
+    if (isRedundantExplicitThis(*MembExpr, *MethodDecl, *Result.Context)) {
       removeExplicitThis(*Result.SourceManager, *MembExpr);
     }
   } else if ((Style == ThisStyle::Explicit) && ThisExpr->isImplicit()) {
-    addExplicitThis(*ThisExpr);
+    addExplicitThis(*MembExpr);
   }
 }
 } // namespace misc
