@@ -29,8 +29,6 @@ public:
   bool isValidLocation(SourceLocation ThisLocation,
                        const SourceManager &SM) const;
   void addExplicitThis(const MemberExpr &MembExpr);
-  void removeExplicitThis(SourceLocation ThisStart, SourceLocation ThisEnd,
-                          const SourceManager &SM);
   void removeExplicitThis(const SourceManager &SM,
                           const MemberExpr &MatchedMember);
 

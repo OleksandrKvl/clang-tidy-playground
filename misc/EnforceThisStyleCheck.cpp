@@ -71,10 +71,10 @@ static bool hasVariableWithName(const CXXMethodDecl &Function,
   return !Matches.empty();
 }
 
-static bool hasDirectMember(const CXXRecordDecl &Record, ASTContext &Context,
+static bool hasDirectMember(const CXXRecordDecl &Class, ASTContext &Context,
                             const StringRef Name) {
   const auto Matches =
-      match(cxxRecordDecl(has(namedDecl(hasName(Name)))), Record, Context);
+      match(cxxRecordDecl(has(namedDecl(hasName(Name)))), Class, Context);
 
   return !Matches.empty();
 }
@@ -87,15 +87,6 @@ static bool isDependentName(const CXXMethodDecl &Method,
          !hasDirectMember(*Class, Context, MembExpr.getMemberDecl()->getName());
 }
 
-void EnforceThisStyleCheck::removeExplicitThis(const SourceLocation ThisStart,
-                                               const SourceLocation ThisEnd,
-                                               const SourceManager &SM) {
-  const auto ThisRange = Lexer::makeFileCharRange(
-      CharSourceRange::getCharRange(ThisStart, ThisEnd), SM, getLangOpts());
-
-  diag(ThisStart, "remove 'this->'") << FixItHint::CreateRemoval(ThisRange);
-}
-
 void EnforceThisStyleCheck::removeExplicitThis(const SourceManager &SM,
                                                const MemberExpr &MembExpr) {
   const auto ThisStart = MembExpr.getBeginLoc();
@@ -104,7 +95,10 @@ void EnforceThisStyleCheck::removeExplicitThis(const SourceManager &SM,
     ThisEnd = MembExpr.getQualifierLoc().getBeginLoc();
   }
 
-  removeExplicitThis(ThisStart, ThisEnd, SM);
+  const auto ThisRange = Lexer::makeFileCharRange(
+      CharSourceRange::getCharRange(ThisStart, ThisEnd), SM, getLangOpts());
+
+  diag(ThisStart, "remove 'this->'") << FixItHint::CreateRemoval(ThisRange);
 }
 
 void EnforceThisStyleCheck::addExplicitThis(const MemberExpr &MembExpr) {
