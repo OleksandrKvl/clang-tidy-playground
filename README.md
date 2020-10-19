@@ -1,6 +1,5 @@
-## clang-tidy-standalone
+## clang-tidy-playground
 
-This is an empty clang-tidy standalone version, you can build it without build the 
-whole LLVM(which is long). You need to install all packages mentioned 
-[here](https://apt.llvm.org/).
-Current version is based on llvm-10 so you have to use corresponding packages.
+This is my playground for various `clang-tidy`-based checks. It's based on
+[clang-tidy-standalone](https://github.com/OleksandrKvl/clang-tidy-standalone)
+and requires LLVM 10 [packages](https://apt.llvm.org/) to build.
