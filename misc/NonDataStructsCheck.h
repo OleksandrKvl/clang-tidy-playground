@@ -15,7 +15,8 @@ namespace clang {
 namespace tidy {
 namespace misc {
 
-/// FIXME: Write a short description.
+/// This check detects struct-s that has either non-static member functions or
+/// non-public data members, static data members are allowed.
 ///
 /// For the user-facing documentation see:
 /// http://clang.llvm.org/extra/clang-tidy/checks/misc-non-data-structs.html
