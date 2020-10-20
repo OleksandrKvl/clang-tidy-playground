@@ -15,7 +15,8 @@ namespace clang {
 namespace tidy {
 namespace misc {
 
-/// FIXME: Write a short description.
+/// Enforces this-usage style. In explicit mode adds `this->` to all member
+/// access. In implicit mode removes all redundant `this->`.
 ///
 /// For the user-facing documentation see:
 /// http://clang.llvm.org/extra/clang-tidy/checks/misc-enforce-this-style.html
