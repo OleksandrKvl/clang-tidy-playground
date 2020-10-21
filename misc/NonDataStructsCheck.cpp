@@ -17,13 +17,11 @@ namespace tidy {
 namespace misc {
 void NonDataStructsCheck::registerMatchers(MatchFinder *Finder) {
   Finder->addMatcher(
-      cxxRecordDecl(
-          isStruct(),
-          anyOf(has(cxxMethodDecl(
-                        unless(anyOf(isImplicit(), isDefaulted(), isDeleted(),
-                                     isStaticStorageClass())))
-                        .bind("method")),
-                has(fieldDecl(unless(isPublic())).bind("field"))))
+      cxxRecordDecl(isStruct(),
+                    anyOf(has(cxxMethodDecl(isUserProvided(),
+                                            unless(isStaticStorageClass()))
+                                  .bind("method")),
+                          has(fieldDecl(unless(isPublic())).bind("field"))))
           .bind("record"),
       this);
 }

@@ -55,7 +55,7 @@ void EnforceThisStyleCheck::registerMatchers(MatchFinder *Finder) {
   Finder->addMatcher(
       cxxMethodDecl(
           // don't check compiler-generated function definitions
-          isDefinition(), unless(anyOf(isImplicit(), isDefaulted())),
+          isDefinition(), isUserProvided(),
           forEachDescendant(
               memberExpr(has(ignoringImpCasts(cxxThisExpr().bind("thisExpr"))))
                   .bind("memberExpr")))
