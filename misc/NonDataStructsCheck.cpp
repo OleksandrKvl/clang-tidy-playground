@@ -40,9 +40,10 @@ void NonDataStructsCheck::registerMatchers(MatchFinder *Finder) {
   Finder->addMatcher(
       cxxRecordDecl(
           isStruct(),
-          anyOf(has(cxxMethodDecl(isUserProvided(),
-                                  unless(isStaticStorageClass()))
-                        .bind("method")),
+          anyOf(allOf(has(cxxMethodDecl(isUserProvided(),
+                                        unless(isStaticStorageClass()))
+                              .bind("method")),
+                      has(fieldDecl())),
                 has(fieldDecl(unless(isPublic())).bind("field")),
                 hasDirectBase(cxxRecordDecl(unless(isStruct())).bind("base"))))
           .bind("record"),
