@@ -22,10 +22,13 @@ namespace misc {
 /// http://clang.llvm.org/extra/clang-tidy/checks/misc-non-data-structs.html
 class NonDataStructsCheck : public ClangTidyCheck {
 public:
-  NonDataStructsCheck(StringRef Name, ClangTidyContext *Context)
-      : ClangTidyCheck(Name, Context) {}
+  NonDataStructsCheck(StringRef Name, ClangTidyContext *Context);
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
+  void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
+
+private:
+  bool AllowConstructors{};
 };
 
 } // namespace misc

@@ -30,20 +30,67 @@ AST_MATCHER_P(CXXRecordDecl, hasDirectBase,
   }
   return false;
 }
+
+AST_MATCHER(CXXConstructorDecl, hasBitFieldInitializersOnly) {
+  if (Node.inits().empty()) {
+    return false;
+  }
+
+  for (const auto &initializer : Node.inits()) {
+    const auto isDirectBitFieldInitializer =
+        initializer->isMemberInitializer() &&
+        initializer->getMember()->isBitField();
+
+    if (!initializer->isInClassMemberInitializer() &&
+        !isDirectBitFieldInitializer) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// from /misc/NonPrivateMemberVariablesInClassesCheck.cpp
+AST_POLYMORPHIC_MATCHER_P(boolean, AST_POLYMORPHIC_SUPPORTED_TYPES(Stmt, Decl),
+                          bool, Boolean) {
+  return Boolean;
+}
+
+// from /readability/ConvertMemberFunctionsToStatic.cpp
+AST_MATCHER(CXXMethodDecl, hasTrivialBody) { return Node.hasTrivialBody(); }
 } // namespace
+
+NonDataStructsCheck::NonDataStructsCheck(StringRef Name,
+                                         ClangTidyContext *Context)
+    : ClangTidyCheck(Name, Context),
+      AllowConstructors(Options.get("AllowConstructors", 0)) {}
+
+void NonDataStructsCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
+  Options.store(Opts, "AllowConstructors", AllowConstructors);
+}
 
 void NonDataStructsCheck::registerMatchers(MatchFinder *Finder) {
   if (!getLangOpts().CPlusPlus) {
     return;
   }
 
+  auto ShouldAllowCtor =
+      allOf(boolean(AllowConstructors), cxxConstructorDecl());
+
+  // since C++20 default member initialization for bit-fields is supported
+  auto IsBitFieldInitCtor = allOf(
+      boolean(!getLangOpts().CPlusPlus2a),
+      cxxConstructorDecl(hasTrivialBody(), hasBitFieldInitializersOnly()));
+
   Finder->addMatcher(
       cxxRecordDecl(
           isStruct(),
-          anyOf(allOf(has(cxxMethodDecl(isUserProvided(),
-                                        unless(isStaticStorageClass()))
-                              .bind("method")),
-                      has(fieldDecl())),
+          anyOf(allOf(has(fieldDecl()),
+                      has(cxxMethodDecl(isUserProvided(),
+                                        unless(anyOf(isStaticStorageClass(),
+                                                     ShouldAllowCtor,
+                                                     IsBitFieldInitCtor)))
+                              .bind("method"))),
                 has(fieldDecl(unless(isPublic())).bind("field")),
                 hasDirectBase(cxxRecordDecl(unless(isStruct())).bind("base"))))
           .bind("record"),
