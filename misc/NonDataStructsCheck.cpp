@@ -50,6 +50,20 @@ AST_MATCHER(CXXConstructorDecl, hasBitFieldInitializersOnly) {
   return true;
 }
 
+AST_MATCHER(CXXRecordDecl, hasNonPublicBase) {
+  if (!Node.hasDefinition()) {
+    return false;
+  }
+
+  for (const auto &BaseSpec : Node.bases()) {
+    if (BaseSpec.getAccessSpecifier() != AS_public) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 // from /misc/NonPrivateMemberVariablesInClassesCheck.cpp
 AST_POLYMORPHIC_MATCHER_P(boolean, AST_POLYMORPHIC_SUPPORTED_TYPES(Stmt, Decl),
                           bool, Boolean) {
@@ -92,7 +106,9 @@ void NonDataStructsCheck::registerMatchers(MatchFinder *Finder) {
                                                      IsBitFieldInitCtor)))
                               .bind("method"))),
                 has(fieldDecl(unless(isPublic())).bind("field")),
-                hasDirectBase(cxxRecordDecl(unless(isStruct())).bind("base"))))
+                anyOf(hasNonPublicBase(),
+                      hasDirectBase(
+                          cxxRecordDecl(unless(isStruct())).bind("base")))))
           .bind("record"),
       this);
 }
@@ -111,12 +127,13 @@ void NonDataStructsCheck::check(const MatchFinder::MatchResult &Result) {
     diag(MatchedRecord->getLocation(),
          "struct %0 has non-public data member %1")
         << MatchedRecord << MatchedField;
-  } else {
-    const auto MatchedBase = Result.Nodes.getNodeAs<CXXRecordDecl>("base");
-    assert(MatchedBase);
-
+  } else if (const auto MatchedBase =
+                 Result.Nodes.getNodeAs<CXXRecordDecl>("base")) {
     diag(MatchedRecord->getLocation(), "struct %0 has non-struct base %1")
         << MatchedRecord << MatchedBase;
+  } else {
+    diag(MatchedRecord->getLocation(), "struct %0 has non-public base")
+        << MatchedRecord;
   }
 }
 
