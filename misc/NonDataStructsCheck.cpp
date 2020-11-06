@@ -77,10 +77,12 @@ AST_MATCHER(CXXMethodDecl, hasTrivialBody) { return Node.hasTrivialBody(); }
 NonDataStructsCheck::NonDataStructsCheck(StringRef Name,
                                          ClangTidyContext *Context)
     : ClangTidyCheck(Name, Context),
-      AllowConstructors(Options.get("AllowConstructors", 0)) {}
+      AllowConstructors(Options.get("AllowConstructors", false)),
+      SkipStateless{Options.get("SkipStateless", true)} {}
 
 void NonDataStructsCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
   Options.store(Opts, "AllowConstructors", AllowConstructors);
+  Options.store(Opts, "SkipStateless", SkipStateless);
 }
 
 void NonDataStructsCheck::registerMatchers(MatchFinder *Finder) {
@@ -98,13 +100,12 @@ void NonDataStructsCheck::registerMatchers(MatchFinder *Finder) {
 
   Finder->addMatcher(
       cxxRecordDecl(
-          isStruct(),
-          anyOf(allOf(has(fieldDecl()),
-                      has(cxxMethodDecl(isUserProvided(),
-                                        unless(anyOf(isStaticStorageClass(),
-                                                     ShouldAllowCtor,
-                                                     IsBitFieldInitCtor)))
-                              .bind("method"))),
+          isStruct(), anyOf(boolean(!SkipStateless), has(fieldDecl())),
+          anyOf(has(cxxMethodDecl(
+                        isUserProvided(),
+                        unless(anyOf(isStaticStorageClass(), ShouldAllowCtor,
+                                     IsBitFieldInitCtor)))
+                        .bind("method")),
                 has(fieldDecl(unless(isPublic())).bind("field")),
                 anyOf(hasNonPublicBase(),
                       hasDirectBase(

@@ -28,7 +28,8 @@ public:
   void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
 
 private:
-  bool AllowConstructors{};
+  bool AllowConstructors;
+  bool SkipStateless;
 };
 
 } // namespace misc
