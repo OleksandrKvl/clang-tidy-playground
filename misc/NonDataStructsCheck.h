@@ -15,21 +15,26 @@ namespace clang {
 namespace tidy {
 namespace misc {
 
-/// This check detects struct-s that has either non-static member functions or
-/// non-public data members, static data members are allowed.
-///
-/// For the user-facing documentation see:
-/// http://clang.llvm.org/extra/clang-tidy/checks/misc-non-data-structs.html
+/// This check detects struct-s that has either non-static member functions,
+/// non-public data members, non-public or non-struct bases, static data members
+/// are allowed.
 class NonDataStructsCheck : public ClangTidyCheck {
 public:
+  enum class AllowedCtorKind { None, Default, Primary };
+
   NonDataStructsCheck(StringRef Name, ClangTidyContext *Context);
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
   void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
 
 private:
-  bool AllowConstructors;
+  bool AllowNonEmptyCtorBody;
+  bool AllowDefaultMemberInit;
+  AllowedCtorKind AllowedCtors;
   bool SkipStateless;
+
+  static AllowedCtorKind StringToCtorKind(StringRef Str);
+  static std::string CtorKindToString(AllowedCtorKind Kind);
 };
 
 } // namespace misc

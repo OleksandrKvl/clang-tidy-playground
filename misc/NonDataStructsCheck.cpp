@@ -31,25 +31,6 @@ AST_MATCHER_P(CXXRecordDecl, hasDirectBase,
   return false;
 }
 
-AST_MATCHER(CXXConstructorDecl, hasBitFieldInitializersOnly) {
-  if (Node.inits().empty()) {
-    return false;
-  }
-
-  for (const auto &initializer : Node.inits()) {
-    const auto isDirectBitFieldInitializer =
-        initializer->isMemberInitializer() &&
-        initializer->getMember()->isBitField();
-
-    if (!initializer->isInClassMemberInitializer() &&
-        !isDirectBitFieldInitializer) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 AST_MATCHER(CXXRecordDecl, hasNonPublicBase) {
   if (!Node.hasDefinition()) {
     return false;
@@ -72,16 +53,58 @@ AST_POLYMORPHIC_MATCHER_P(boolean, AST_POLYMORPHIC_SUPPORTED_TYPES(Stmt, Decl),
 
 // from /readability/ConvertMemberFunctionsToStatic.cpp
 AST_MATCHER(CXXMethodDecl, hasTrivialBody) { return Node.hasTrivialBody(); }
+
+AST_MATCHER_P(CXXConstructorDecl, shouldAllowCtor,
+              NonDataStructsCheck::AllowedCtorKind, AllowedCtors) {
+  if (Node.isCopyOrMoveConstructor() ||
+      (AllowedCtors == NonDataStructsCheck::AllowedCtorKind::None)) {
+    return false;
+  } else if (AllowedCtors == NonDataStructsCheck::AllowedCtorKind::Primary) {
+    return true;
+  } else {
+    return Node.isDefaultConstructor();
+  }
+}
 } // namespace
+
+NonDataStructsCheck::AllowedCtorKind
+NonDataStructsCheck::StringToCtorKind(StringRef Str) {
+  if (Str == "default") {
+    return AllowedCtorKind::Default;
+  } else if (Str == "primary") {
+    return AllowedCtorKind::Primary;
+  }
+
+  assert((Str == "none") && "Bad AllowedCtors string");
+  return AllowedCtorKind::None;
+}
+
+std::string NonDataStructsCheck::CtorKindToString(const AllowedCtorKind Kind) {
+  switch (Kind) {
+  case AllowedCtorKind::None:
+    return "none";
+  case AllowedCtorKind::Default:
+    return "default";
+  case AllowedCtorKind::Primary:
+    return "primary";
+  default:
+    llvm_unreachable("Bad AllowedCtorKind value");
+  }
+}
 
 NonDataStructsCheck::NonDataStructsCheck(StringRef Name,
                                          ClangTidyContext *Context)
-    : ClangTidyCheck(Name, Context),
-      AllowConstructors(Options.get("AllowConstructors", false)),
+    : ClangTidyCheck(Name, Context), AllowNonEmptyCtorBody{Options.get(
+                                         "AllowNonEmptyCtorBody", false)},
+      AllowDefaultMemberInit{Options.get("AllowDefaultMemberInit", false)},
+      AllowedCtors{StringToCtorKind(Options.get(
+          "AllowedCtors", CtorKindToString(AllowedCtorKind::None)))},
       SkipStateless{Options.get("SkipStateless", true)} {}
 
 void NonDataStructsCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
-  Options.store(Opts, "AllowConstructors", AllowConstructors);
+  Options.store(Opts, "AllowNonEmptyCtorBody", AllowNonEmptyCtorBody);
+  Options.store(Opts, "AllowDefaultMemberInit", AllowDefaultMemberInit);
+  Options.store(Opts, "AllowedCtors", CtorKindToString(AllowedCtors));
   Options.store(Opts, "SkipStateless", SkipStateless);
 }
 
@@ -90,26 +113,28 @@ void NonDataStructsCheck::registerMatchers(MatchFinder *Finder) {
     return;
   }
 
-  auto ShouldAllowCtor =
-      allOf(boolean(AllowConstructors), cxxConstructorDecl());
+  const auto ShouldAllowNonEmptyCtorBody =
+      anyOf(boolean(AllowNonEmptyCtorBody), hasTrivialBody());
 
-  // since C++20 default member initialization for bit-fields is supported
-  auto IsBitFieldInitCtor = allOf(
-      boolean(!getLangOpts().CPlusPlus2a),
-      cxxConstructorDecl(hasTrivialBody(), hasBitFieldInitializersOnly()));
+  const auto ShouldAllowDefaultMemberInit =
+      anyOf(boolean(AllowDefaultMemberInit), unless(has(initListExpr())));
 
   Finder->addMatcher(
       cxxRecordDecl(
           isStruct(), anyOf(boolean(!SkipStateless), has(fieldDecl())),
-          anyOf(has(cxxMethodDecl(
-                        isUserProvided(),
-                        unless(anyOf(isStaticStorageClass(), ShouldAllowCtor,
-                                     IsBitFieldInitCtor)))
-                        .bind("method")),
-                has(fieldDecl(unless(isPublic())).bind("field")),
-                anyOf(hasNonPublicBase(),
-                      hasDirectBase(
-                          cxxRecordDecl(unless(isStruct())).bind("base")))))
+          anyOf(
+              has(cxxMethodDecl(isUserProvided(),
+                                unless(anyOf(isStaticStorageClass(),
+                                             cxxConstructorDecl(
+                                                 shouldAllowCtor(AllowedCtors),
+                                                 ShouldAllowNonEmptyCtorBody))))
+                      .bind("method")),
+              has(fieldDecl(
+                      unless(allOf(isPublic(), ShouldAllowDefaultMemberInit)))
+                      .bind("field")),
+              anyOf(hasNonPublicBase(),
+                    hasDirectBase(
+                        cxxRecordDecl(unless(isStruct())).bind("base")))))
           .bind("record"),
       this);
 }
@@ -126,7 +151,7 @@ void NonDataStructsCheck::check(const MatchFinder::MatchResult &Result) {
   } else if (const auto MatchedField =
                  Result.Nodes.getNodeAs<FieldDecl>("field")) {
     diag(MatchedRecord->getLocation(),
-         "struct %0 has non-public data member %1")
+         "struct %0 has non-public or default-initialized data member %1")
         << MatchedRecord << MatchedField;
   } else if (const auto MatchedBase =
                  Result.Nodes.getNodeAs<CXXRecordDecl>("base")) {
@@ -137,7 +162,6 @@ void NonDataStructsCheck::check(const MatchFinder::MatchResult &Result) {
         << MatchedRecord;
   }
 }
-
 } // namespace misc
 } // namespace tidy
 } // namespace clang
