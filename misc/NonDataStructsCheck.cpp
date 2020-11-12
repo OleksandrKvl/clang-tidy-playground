@@ -31,14 +31,18 @@ AST_MATCHER_P(CXXRecordDecl, hasDirectBase,
   return false;
 }
 
-AST_MATCHER(CXXRecordDecl, hasNonPublicBase) {
+AST_MATCHER_P(CXXRecordDecl, hasNonPublicBase,
+              ast_matchers::internal::Matcher<CXXRecordDecl>, InnerMatcher) {
   if (!Node.hasDefinition()) {
     return false;
   }
 
   for (const auto &BaseSpec : Node.bases()) {
     if (BaseSpec.getAccessSpecifier() != AS_public) {
-      return true;
+      const auto Record = BaseSpec.getType()->getAsCXXRecordDecl();
+      if (Record && InnerMatcher.matches(*Record, Finder, Builder)) {
+        return true;
+      }
     }
   }
 
@@ -132,9 +136,9 @@ void NonDataStructsCheck::registerMatchers(MatchFinder *Finder) {
               has(fieldDecl(
                       unless(allOf(isPublic(), ShouldAllowDefaultMemberInit)))
                       .bind("field")),
-              anyOf(hasNonPublicBase(),
+              anyOf(hasNonPublicBase(cxxRecordDecl().bind("np_base")),
                     hasDirectBase(
-                        cxxRecordDecl(unless(isStruct())).bind("base")))))
+                        cxxRecordDecl(unless(isStruct())).bind("ns_base")))))
           .bind("record"),
       this);
 }
@@ -153,13 +157,14 @@ void NonDataStructsCheck::check(const MatchFinder::MatchResult &Result) {
     diag(MatchedRecord->getLocation(),
          "struct %0 has non-public or default-initialized data member %1")
         << MatchedRecord << MatchedField;
-  } else if (const auto MatchedBase =
-                 Result.Nodes.getNodeAs<CXXRecordDecl>("base")) {
+  } else if (const auto MatchedNonStructBase =
+                 Result.Nodes.getNodeAs<CXXRecordDecl>("ns_base")) {
     diag(MatchedRecord->getLocation(), "struct %0 has non-struct base %1")
-        << MatchedRecord << MatchedBase;
-  } else {
-    diag(MatchedRecord->getLocation(), "struct %0 has non-public base")
-        << MatchedRecord;
+        << MatchedRecord << MatchedNonStructBase;
+  } else if (const auto MatchedNonPublicBase =
+                 Result.Nodes.getNodeAs<CXXRecordDecl>("np_base")) {
+    diag(MatchedRecord->getLocation(), "struct %0 has non-public base %1")
+        << MatchedRecord << MatchedNonPublicBase;
   }
 }
 } // namespace misc
